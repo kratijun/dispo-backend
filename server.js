@@ -25,9 +25,9 @@ db.connect((err) => {
 
 // Routen
 app.use('/api/gps', require('./routes/gpsRoutes'));
-app.use('/api/user', require('./routes/userRoutes'));
 app.use('/api/status', require('./routes/statusRoutes'));
-app.use('/api/mitarbeiter', require('./routes/mitarbeiterRoutes'));
+app.use('/api/user', require('./routes/userRoutes'));
+app.use('/api/auth', require('./routes/authRoutes'));
 
 // HTTP-Server starten
 const server = app.listen(PORT, () => {

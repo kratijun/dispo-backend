@@ -1,66 +1,108 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../utils/database');
-const { logWithDate } = require('../utils/logger');
-const WebSocket = require('ws');
+const { db } = require('../utils/database'); // Stelle sicher, dass db korrekt konfiguriert ist
 
+// Route für alle Benutzerdaten
+router.get('/getUserData', async (req, res) => {
+    const query = 'SELECT * FROM users'; // Alle Benutzer abfragen
 
-// Route zum Aktualisieren des Namens eines Mitarbeiters
-router.post('/updateName', (req, res) => {
-    const { usernummer, name } = req.body;
-    const wss = req.app.locals.wss; // WebSocket-Server über req.app.locals abrufen
+    try {
+        // Verwenden von db.query, um das Ergebnis abzurufen
+        db.query(query, (err, rows) => {
+            if (err) {
+                console.error('Datenbankfehler:', err);
+                return res.status(500).json({ message: 'Fehler bei der Datenbankabfrage' });
+            }
 
-    if (!usernummer || !name) {
-        return res.status(400).send('Usernummer und Name müssen angegeben werden.');
+            // Wenn keine Benutzerdaten gefunden wurden
+            if (!rows || rows.length === 0) {
+                return res.status(404).json({ message: 'Keine Benutzer gefunden' });
+            }
+
+            // Gebe alle Benutzerdaten als JSON zurück
+            res.json(rows);
+        });
+    } catch (error) {
+        console.error('Fehler beim Abrufen der Benutzerdaten:', error);
+        res.status(500).json({ message: 'Interner Serverfehler' });
+    }
+});
+
+// Route für einen bestimmten Benutzer
+router.get('/getUserData/:username', async (req, res) => {
+    const { username } = req.params; // Holen des Benutzernamens aus den URL-Parametern
+
+    // Sicherstellen, dass der Benutzername vorhanden ist
+    if (!username) {
+        return res.status(400).json({ message: 'Benutzername fehlt' });
     }
 
-    const query = 'UPDATE arbeiter SET name = ? WHERE usernummer = ?';
-    db.query(query, [name, usernummer], (err) => {
-        if (err) {
-            logWithDate('Fehler beim Aktualisieren des Namens: ' + err);
-            return res.status(500).send('Fehler beim Aktualisieren des Namens');
-        }
-        logWithDate(`Name erfolgreich aktualisiert: ${name} (Usernummer: ${usernummer})`);
-        res.send('Name erfolgreich aktualisiert');
+    const query = 'SELECT * FROM users WHERE username = ?'; // Suche nach Benutzer anhand des Benutzernamens
 
-        // Nachricht an WebSocket-Clients senden
-        if (wss) {
+    try {
+        // Verwenden von db.query, um das Ergebnis abzurufen
+        db.query(query, [username], (err, rows) => {
+            if (err) {
+                console.error('Datenbankfehler:', err);
+                return res.status(500).json({ message: 'Fehler bei der Datenbankabfrage' });
+            }
+
+            // Wenn keine Benutzerdaten gefunden wurden
+            if (!rows || rows.length === 0) {
+                return res.status(404).json({ message: 'Benutzer nicht gefunden' });
+            }
+
+            const userData = rows[0]; // Wir gehen davon aus, dass nur ein Benutzer mit diesem Benutzernamen existiert
+
+            // Gebe die Benutzerdaten als JSON zurück
+            res.json(userData);
+        });
+    } catch (error) {
+        console.error('Fehler beim Abrufen der Benutzerdaten:', error);
+        res.status(500).json({ message: 'Interner Serverfehler' });
+    }
+});
+
+router.patch('/updateZusatz', async (req, res) => {
+    const { ressource, newText } = req.body; // Entnehme 'ressource' und 'text' (Zusatz) aus dem Request-Body
+    const wss = req.app.locals.wss; // WebSocket-Server über req.app.locals abrufen
+
+    // Sicherstellen, dass beide Werte vorhanden sind
+    if (!ressource || newText === undefined) { // Wenn der Zusatztext nicht angegeben ist
+        return res.status(400).json({ message: 'Fehlende Parameter: ressource oder text' });
+    }
+
+    // SQL-Query, um das Zusatzfeld zu aktualisieren
+    const query = 'UPDATE users SET text = ? WHERE ressource = ?';
+
+    try {
+        // Verwenden von db.query, um die Datenbank zu aktualisieren
+        db.query(query, [newText, ressource], (err, result) => {
+            if (err) {
+                console.error('Datenbankfehler:', err);
+                return res.status(500).json({ message: 'Fehler beim Aktualisieren der Daten' });
+            }
+
+            // Wenn keine Zeile aktualisiert wurde, prüfen, ob die Ressource existiert
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ message: 'Ressource nicht gefunden' });
+            }
+
+            // Erfolgreiches Update
+            // Sende WebSocket-Nachricht an alle Clients, um die Änderungen zu synchronisieren
             wss.clients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({ message: 'update' }));
                 }
             });
-        }
-    });
-});
 
-// Route zum Löschen des Namens eines Mitarbeiters
-router.post('/deleteName', (req, res) => {
-    const { usernummer } = req.body;
-    const wss = req.app.locals.wss; // WebSocket-Server über req.app.locals abrufen
-
-    if (!usernummer) {
-        return res.status(400).send('Usernummer muss angegeben werden.');
+            res.json({ message: 'Zusatzfeld erfolgreich aktualisiert' });
+        });
+    } catch (error) {
+        console.error('Fehler beim Aktualisieren des Zusatzfelds:', error);
+        res.status(500).json({ message: 'Interner Serverfehler' });
     }
-
-    const query = 'UPDATE arbeiter SET name = "" WHERE usernummer = ?';
-    db.query(query, [usernummer], (err) => {
-        if (err) {
-            logWithDate('Fehler beim Löschen des Namens: ' + err);
-            return res.status(500).send('Fehler beim Löschen des Namens');
-        }
-        logWithDate(`Name erfolgreich gelöscht für Usernummer: ${usernummer}`);
-        res.send('Name erfolgreich gelöscht');
-
-        // Nachricht an WebSocket-Clients senden
-        if (wss) {
-            wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify({ message: 'update' }));
-                }
-            });
-        }
-    });
 });
+
 
 module.exports = router;
