@@ -30,12 +30,8 @@ app.use('/api/user', require('./routes/userRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
 
 // HTTP-Server starten
-const server = app.listen(PORT, () => {
-    const address = os.networkInterfaces().eth0
-        ? os.networkInterfaces().eth0[0].address
-        : 'localhost';
-    logWithDate(`Server läuft auf http://${address}:${PORT}`);
-});
+const server = app.listen(PORT, logWithDate("Server gestartet."))
+
 
 // WebSocket-Server initialisieren und an App weitergeben
 const wss = initializeWebSocket(server);
